@@ -98,6 +98,21 @@ class HandlerTests(unittest.TestCase):
         page.assert_called_once_with("dashboard.html")
         self.assertEqual(result["statusCode"], 200)
 
+    def test_sentiments_route_forwards_pagination_token(self):
+        event = {
+            "httpMethod": "GET",
+            "path": "/api/sentiments",
+            "queryStringParameters": {
+                "app": "Samsung Health",
+                "nextToken": "opaque-cursor-value",
+            },
+        }
+        expected = {"statusCode": 200, "body": json.dumps({"sentiments": [], "nextToken": None})}
+        with patch.object(app, "_get_sentiments", return_value=expected) as get_sentiments:
+            result = app.lambda_handler(event, None)
+        get_sentiments.assert_called_once_with("Samsung Health", "opaque-cursor-value")
+        self.assertEqual(result["statusCode"], 200)
+
     def test_feedback_submission_saves_sentiment_and_returns_thank_you(self):
         payload = {
             "fname": "Jane Doe",
