@@ -4,6 +4,8 @@ import logging
 import os
 import re
 import uuid
+import urllib.request
+from pathlib import Path
 from datetime import datetime, timezone
 from html import escape
 from urllib.parse import parse_qs
@@ -121,11 +123,65 @@ def _thank_you_page():
 </body></html>"""
 
 
+def _html_page(filename):
+    try:
+        page = (Path(__file__).parent / "static" / filename).read_text(encoding="utf-8")
+        return _response(200, page, "text/html; charset=utf-8")
+    except OSError:
+        logger.exception("Unable to load page: %s", filename)
+        return _response(500, {"message": "Page is temporarily unavailable."})
+
+
+def _get_sentiments(app_name):
+    endpoint = os.getenv("APPSYNC_GRAPHQL_URL", "")
+    api_key = os.getenv("APPSYNC_API_KEY", "")
+    if not endpoint or not api_key:
+        return _response(503, {"message": "Dashboard API is not configured."})
+
+    query = "query GetSentiments($appName: String!) { getSentiments(appName: $appName) { appName sentiment createdAt } }"
+    body = json.dumps({"query": query, "variables": {"appName": app_name}}).encode("utf-8")
+    request = urllib.request.Request(
+        endpoint,
+        data=body,
+        headers={"Content-Type": "application/json", "x-api-key": api_key},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if payload.get("errors"):
+            logger.error("AppSync GraphQL errors: %s", payload["errors"])
+            return _response(502, {"message": "Dashboard data could not be retrieved."})
+        sentiments = payload.get("data", {}).get("getSentiments", [])
+        return _response(200, {"sentiments": sentiments})
+    except Exception:
+        logger.exception("AppSync request failed")
+        return _response(502, {"message": "Dashboard data could not be retrieved."})
+
+
 def lambda_handler(event, context):
-    """Accept feedback through API Gateway REST (proxy integration)."""
+    """Route page requests, dashboard reads and feedback submissions."""
     method = event.get("httpMethod") or event.get("requestContext", {}).get("http", {}).get("method", "")
+    path = event.get("path") or event.get("rawPath") or "/"
+    params = event.get("queryStringParameters") or {}
+
     if method == "OPTIONS":
         return _response(204, "")
+
+    if method == "GET":
+        if path.endswith("/api/sentiments"):
+            app_name = (params.get("app") or "").strip()
+            if app_name not in VALID_APPS:
+                return _response(400, {"message": "Please select a supported health app."})
+            return _get_sentiments(app_name)
+        if path.endswith("/dashboard"):
+            app_name = (params.get("app") or "").strip()
+            if app_name not in VALID_APPS:
+                return _response(400, {"message": "Please select a supported health app."})
+            return _html_page("dashboard.html")
+        if path.endswith("/app-selection") or params.get("page") == "app_selection":
+            return _html_page("app-selection.html")
+        return _html_page("index.html")
 
     if method != "POST":
         return _response(405, {"message": "Method not allowed."})
@@ -163,7 +219,7 @@ def lambda_handler(event, context):
             item["sentiment"],
             item["feedbackId"],
         )
-        return _response(200, _thank_you_page(), "text/html; charset=utf-8")
+        return _html_page("thank-you.html")
 
     except ValidationError as exc:
         return _response(400, {"message": str(exc)})
