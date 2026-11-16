@@ -3,6 +3,11 @@ Transform: AWS::Serverless-2016-10-31
 Description: Feedback Sentiment Hub - rebuild v2 foundation
 
 Parameters:
+  AppSyncApiKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: AppSync API key, supplied securely after API key creation
   FeedbackTableName:
     Type: String
     Default: pranaytable
@@ -63,6 +68,8 @@ Resources:
         Variables:
           FEEDBACK_TABLE_NAME: !Ref FeedbackTable
           LOG_LEVEL: INFO
+          APPSYNC_GRAPHQL_URL: !GetAtt AppSyncApi.GraphQLUrl
+          APPSYNC_API_KEY: !Ref AppSyncApiKey
       Policies:
         - AWSLambdaBasicExecutionRole
         - Statement:
@@ -83,6 +90,30 @@ Resources:
             RestApiId: !Ref FeedbackApi
             Path: /
             Method: POST
+        HomePage:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FeedbackApi
+            Path: /
+            Method: GET
+        AppSelectionPage:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FeedbackApi
+            Path: /app-selection
+            Method: GET
+        DashboardPage:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FeedbackApi
+            Path: /dashboard
+            Method: GET
+        SentimentsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FeedbackApi
+            Path: /api/sentiments
+            Method: GET
 
 
   AppSyncApi:
