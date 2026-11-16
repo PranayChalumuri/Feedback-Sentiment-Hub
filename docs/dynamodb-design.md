@@ -33,6 +33,14 @@ This index lets AppSync query feedback for one selected app and return the field
 - AppSync resolver role: `dynamodb:Query` on this table's index only (to be defined with the AppSync data source).
 - The dashboard GraphQL type does not expose name, email, or feedback message.
 
+## Data retention for the showcase
+
+- No DynamoDB TTL attribute or automatic expiry is configured.
+- Feedback records remain in the table until manually deleted or the table is removed.
+- This is an intentional choice for the portfolio demonstration, not a recommended policy for a production service.
+- The form tells visitors that name, email, and feedback text are stored and asks them not to submit real personal, medical, or sensitive information.
+- The public dashboard reads only `appName`, `sentiment`, and `createdAt`. It does not return `fname`, `email`, or `message`.
+
 ## Important
 
 The SAM template defines this table as infrastructure. It does not create anything until a deployment is explicitly run and approved. If a table named `pranaytable` already exists in the new account, deployment needs an import/retention decision rather than an attempted duplicate table creation.
