@@ -3,7 +3,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import lambda_function as app
@@ -112,6 +112,37 @@ class HandlerTests(unittest.TestCase):
             result = app.lambda_handler(event, None)
         get_sentiments.assert_called_once_with("Samsung Health", "opaque-cursor-value")
         self.assertEqual(result["statusCode"], 200)
+
+    def test_appsync_page_response_preserves_next_token(self):
+        class FakeCredentials:
+            def get_frozen_credentials(self):
+                return object()
+
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            "data": {
+                "getSentiments": {
+                    "items": [{"appName": "Samsung Health", "sentiment": "POSITIVE", "createdAt": "2026-11-16T10:00:00Z"}],
+                    "nextToken": "next-page-cursor",
+                }
+            }
+        }).encode("utf-8")
+
+        with patch.dict(os.environ, {"APPSYNC_GRAPHQL_URL": "https://example.appsync-api.ap-south-1.amazonaws.com/graphql"}), \
+             patch.object(app, "AWS_REGION", "ap-south-1"), \
+             patch.object(app.session, "get_credentials", return_value=FakeCredentials()), \
+             patch.object(app.SigV4Auth, "add_auth"), \
+             patch("lambda_function.urllib.request.urlopen", return_value=response) as urlopen:
+            result = app._get_sentiments("Samsung Health", "previous-page-cursor")
+
+        body = json.loads(result["body"])
+        self.assertEqual(result["statusCode"], 200)
+        self.assertEqual(body["nextToken"], "next-page-cursor")
+        self.assertEqual(body["sentiments"][0]["sentiment"], "POSITIVE")
+
+        request_body = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
+        self.assertEqual(request_body["variables"]["appName"], "Samsung Health")
+        self.assertEqual(request_body["variables"]["nextToken"], "previous-page-cursor")
 
     def test_feedback_submission_saves_sentiment_and_returns_thank_you(self):
         payload = {
