@@ -12,5 +12,8 @@
     }
   },
   "scanIndexForward": false,
-  "limit": 1000
+  "limit": 100
+  #if($ctx.args.nextToken)
+    ,"nextToken": $util.toJson($ctx.args.nextToken)
+  #end
 }
