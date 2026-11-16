@@ -4,8 +4,13 @@ type Sentiment {
   createdAt: AWSDateTime!
 }
 
+type SentimentConnection {
+  items: [Sentiment!]!
+  nextToken: String
+}
+
 type Query {
-  getSentiments(appName: String!): [Sentiment!]!
+  getSentiments(appName: String!, nextToken: String): SentimentConnection!
 }
 
 schema {
