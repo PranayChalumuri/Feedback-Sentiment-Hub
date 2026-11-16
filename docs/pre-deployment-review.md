@@ -39,10 +39,10 @@ The dashboard and `/api/sentiments` route are intentionally public for recruiter
 
 ### 4. Full-history polling and pagination – medium priority
 
-The browser retrieves every page sequentially and repeats that work every five seconds. This correctly follows pagination, but request volume and response time grow with the complete history. A single refresh can issue many API and AppSync calls.
+The browser retrieves every page sequentially and repeats that work every 30 seconds. This correctly follows pagination, but request volume and response time grow with the complete history. A single refresh can still issue many API and AppSync calls.
 
 **Recommended improvements before scaling:**
-- For a small portfolio demo, consider a longer refresh interval and a bounded date window.
+- For a small portfolio demo, consider a bounded date window; the current dashboard already uses a 30-second refresh interval and a 100-page ceiling.
 - For larger datasets, return server-side aggregates or query a time window rather than downloading every record.
 - Add a maximum page/record budget and a clear “data is too large; narrow the date range” response if full-history loading is retained.
 - Test pagination with enough records to force multiple pages, including a DynamoDB 1 MB page boundary, after deployment is explicitly approved.
