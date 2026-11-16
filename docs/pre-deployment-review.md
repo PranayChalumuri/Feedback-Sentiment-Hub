@@ -13,15 +13,15 @@
 
 ## Findings to resolve before public launch
 
-### 1. Personal-data notice and retention – high priority
+### 1. Personal-data notice and retention – showcase decision recorded
 
-The form collects a name, email address, and free-text feedback. The DynamoDB design currently has no TTL attribute or documented retention period, and the form does not explain why these details are collected, who operates the service, how long they are retained, or how a submitter can request deletion.
+The form collects a name, email address, and free-text feedback. The owner has confirmed that these fields remain for continuity with the original showcase. The owner has also chosen no automatic retention/TTL policy: records remain until manually deleted. This is an explicit portfolio-demo trade-off, not a production privacy recommendation.
 
-**Recommended decision:**
-- Decide whether name and email are genuinely required. If not, remove them from the form and storage.
-- Add a concise privacy notice before accepting real submissions, including purpose, retention, contact/deletion process, and any third-party processing.
-- Agree a retention period and implement a tested deletion/TTL strategy. DynamoDB TTL deletion is asynchronous, so it should not be described as immediate erasure.
-- Avoid collecting sensitive health details in free text; make clear that this is a demo feedback project, not a healthcare service.
+**Agreed showcase handling:**
+- Keep the name and email fields, matching the original project.
+- Do not configure DynamoDB TTL. Records remain until manually deleted or the table is removed.
+- Display a notice on the form explaining what is stored, that records are not automatically deleted, and that visitors must not submit real personal, medical, or sensitive information.
+- This demo is not a healthcare service and must not be presented as production-ready.
 
 ### 2. Public submission endpoint and abuse controls – high priority
 
@@ -33,14 +33,9 @@ The POST route has no authentication, CAPTCHA, or per-client rate limit. API Gat
 - Add request-size limits and consider duplicate/spam controls. Keep the current field validation as a second layer.
 - Set AWS Budgets and billing alerts before any approved deployment; alerts are notifications, not hard spending caps.
 
-### 3. Public dashboard access – medium priority
+### 3. Public dashboard access – owner-approved showcase behavior
 
-The dashboard and `/api/sentiments` route are publicly callable. The current GraphQL response exposes only app name, sentiment, and timestamp—not names, email addresses, or message text—but it still reveals submission activity.
-
-**Recommended decision:**
-- Confirm that public sentiment counts and timestamps are intended.
-- If not, protect the dashboard/API with an access-control mechanism before launch.
-- Keep personal fields out of the GraphQL type and dashboard response.
+The dashboard and `/api/sentiments` route are intentionally public for recruiter demonstrations. The owner approved this behavior. The GraphQL response exposes only app name, sentiment, and timestamp—not names, email addresses, or message text. Public submission activity is therefore visible, but submitter identity and free-text feedback are not.
 
 ### 4. Full-history polling and pagination – medium priority
 
@@ -73,8 +68,14 @@ After explicit deployment approval, verify:
 - The public dashboard exposes no name, email, or free-text feedback.
 - Throttling, alarms, logs, retention/deletion, and cost alerts behave as intended.
 
-## Launch gate
+## Showcase decisions and deployment gate
 
-Do not deploy until the owner has explicitly approved the deployment and made decisions on data minimization, privacy notice, retention/deletion, public dashboard visibility, and abuse controls.
+The owner-approved showcase choices are:
+- Keep name and email fields.
+- Do not configure automatic data expiry or DynamoDB TTL; records remain until manually deleted.
+- Keep the dashboard public, exposing only app name, sentiment, and timestamp.
+- Display a clear demo/privacy notice on the submission form and discourage real or sensitive data.
 
-**Status:** source review documented; no AWS deployment or live integration test performed.
+These choices are for a portfolio demonstration and are not a production privacy or abuse-prevention design. Public submissions can still be abused and may incur AWS service costs. Before any public deployment, review abuse controls, billing alerts, privacy wording, and the expected cost exposure. Deployment still requires the owner's separate explicit approval.
+
+**Status:** source review and showcase decisions documented; no AWS deployment or live integration test performed.
