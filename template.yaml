@@ -43,6 +43,11 @@ Resources:
       StageName: dev
       EndpointConfiguration:
         Type: REGIONAL
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingRateLimit: 5
+          ThrottlingBurstLimit: 10
       Cors:
         AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type'"
@@ -150,6 +155,11 @@ Resources:
             Principal:
               Service: appsync.amazonaws.com
             Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !GetAtt AppSyncApi.Arn
       Policies:
         - PolicyName: QueryFeedbackByApp
           PolicyDocument:
