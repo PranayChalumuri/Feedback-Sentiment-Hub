@@ -1,0 +1,30 @@
+name: Project checks
+
+on:
+  push:
+    branches: [rebuild-v2]
+  pull_request:
+    branches: [rebuild-v2]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test dependency
+        run: python -m pip install boto3
+      - name: Compile Lambda source
+        run: python -m py_compile src/lambda_function.py
+      - name: Validate inline JavaScript
+        run: python scripts/validate_frontend.py
+      - name: Run Lambda unit tests
+        run: python -m unittest discover -s tests -v
