@@ -81,7 +81,7 @@ Resources:
               Effect: Allow
               Action:
                 - appsync:GraphQL
-              Resource: !Sub '${AppSyncApi.Arn}/*'
+              Resource: !Sub '${AppSyncApi.Arn}/types/Query/fields/getSentiments'
       Events:
         SubmitFeedback:
           Type: Api
@@ -117,7 +117,7 @@ Resources:
   AppSyncApi:
     Type: AWS::AppSync::GraphQLApi
     Properties:
-      Name: feedback-sentiment-graphql
+      Name: FeedbackSentimentGraphQL
       AuthenticationType: AWS_IAM
       XrayEnabled: true
 
