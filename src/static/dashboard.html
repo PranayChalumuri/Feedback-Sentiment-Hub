@@ -11,7 +11,6 @@
     </style>
 </head>
 <body class="p-6">
-    <!-- Header (same as before) -->
     <div class="max-w-7xl mx-auto mb-6">
         <div class="bg-white rounded-2xl shadow-lg p-6 flex items-center justify-between">
             <div class="flex items-center space-x-4">
@@ -28,7 +27,6 @@
         </div>
     </div>
 
-    <!-- KPI Cards (same as before) -->
     <div class="max-w-7xl mx-auto mb-6">
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div class="bg-white rounded-xl shadow p-6">
@@ -54,7 +52,6 @@
         </div>
     </div>
 
-    <!-- Charts Grid (same as before) -->
     <div class="max-w-7xl mx-auto">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <div class="chart-container">
@@ -79,37 +76,53 @@
     </div>
 
     <script>
-        // Get app name from URL
         const urlParams = new URLSearchParams(window.location.search);
         const appName = urlParams.get('app');
-        
+        let isRefreshing = false;
+
         if (appName) {
             document.getElementById('app-name-display').textContent = appName;
         }
 
-        // Load Google Charts
         google.charts.load('current', {'packages':['corechart']});
         google.charts.setOnLoadCallback(function() {
             if (appName) {
                 fetchSentiments();
-                // Update every 5 seconds for real-time feel
                 setInterval(fetchSentiments, 5000);
             }
         });
 
         async function fetchSentiments() {
+            if (isRefreshing) return;
+            isRefreshing = true;
             try {
-                const response = await fetch(`/api/sentiments?app=${encodeURIComponent(appName)}`);
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.message || "Unable to load dashboard data");
-                const rows = result.sentiments || [];
+                let nextToken = null;
+                const allRows = [];
+
+                do {
+                    let endpoint = `/api/sentiments?app=${encodeURIComponent(appName)}`;
+                    if (nextToken) {
+                        endpoint += `&nextToken=${encodeURIComponent(nextToken)}`;
+                    }
+
+                    const response = await fetch(endpoint);
+                    const result = await response.json();
+                    if (!response.ok) {
+                        throw new Error(result.message || "Unable to load dashboard data");
+                    }
+
+                    allRows.push(...(result.sentiments || []));
+                    nextToken = result.nextToken || null;
+                } while (nextToken);
+
                 const counts = {
-                    POSITIVE: rows.filter(item => item.sentiment === "POSITIVE").length,
-                    NEGATIVE: rows.filter(item => item.sentiment === "NEGATIVE").length,
-                    MIXED: rows.filter(item => item.sentiment === "MIXED").length,
-                    NEUTRAL: rows.filter(item => item.sentiment === "NEUTRAL").length
+                    POSITIVE: allRows.filter(item => item.sentiment === "POSITIVE").length,
+                    NEGATIVE: allRows.filter(item => item.sentiment === "NEGATIVE").length,
+                    MIXED: allRows.filter(item => item.sentiment === "MIXED").length,
+                    NEUTRAL: allRows.filter(item => item.sentiment === "NEUTRAL").length
                 };
-                document.getElementById("total-feedback").textContent = rows.length;
+
+                document.getElementById("total-feedback").textContent = allRows.length;
                 document.getElementById("positive-count").textContent = counts.POSITIVE;
                 document.getElementById("negative-count").textContent = counts.NEGATIVE;
                 document.getElementById("mixed-count").textContent = counts.MIXED;
@@ -119,12 +132,13 @@
             } catch (error) {
                 console.error("Dashboard refresh failed:", error);
                 document.getElementById("last-updated").textContent = "Unable to refresh dashboard";
+            } finally {
+                isRefreshing = false;
             }
         }
 
         function drawCharts(counts) {
             try {
-                // Stacked Bar Chart
                 var stackedData = google.visualization.arrayToDataTable([
                     ['Sentiment Type', 'Count'],
                     ['POSITIVE', counts.POSITIVE],
@@ -145,7 +159,6 @@
                 var stackedChart = new google.visualization.ColumnChart(document.getElementById('chart_stacked'));
                 stackedChart.draw(stackedData, stackedOptions);
 
-                // Pie Chart
                 var pieData = google.visualization.arrayToDataTable([
                     ['Sentiment', 'Count'],
                     ['POSITIVE', counts.POSITIVE],
@@ -164,7 +177,6 @@
                 var pieChart = new google.visualization.PieChart(document.getElementById('chart_pie'));
                 pieChart.draw(pieData, pieOptions);
 
-                // Grouped Bar Chart
                 var groupedData = google.visualization.arrayToDataTable([
                     ['Metric', 'Count'],
                     ['POSITIVE', counts.POSITIVE],
@@ -183,7 +195,6 @@
                 var groupedChart = new google.visualization.BarChart(document.getElementById('chart_grouped'));
                 groupedChart.draw(groupedData, groupedOptions);
 
-                // Donut Chart
                 var donutData = google.visualization.arrayToDataTable([
                     ['Sentiment', 'Count'],
                     ['POSITIVE', counts.POSITIVE],
@@ -201,7 +212,6 @@
 
                 var donutChart = new google.visualization.PieChart(document.getElementById('chart_donut'));
                 donutChart.draw(donutData, donutOptions);
-
             } catch (error) {
                 console.error('Error drawing charts:', error);
             }
