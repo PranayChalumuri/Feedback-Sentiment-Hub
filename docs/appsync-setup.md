@@ -28,7 +28,7 @@ The resolver queries the GSI by `appName`, returns newest records first, and cur
 - Lambda → AppSync: Lambda signs the GraphQL request with its execution-role credentials using AWS Signature Version 4.
 - AppSync → DynamoDB: AppSync uses its separate data-source role to query the GSI.
 
-The Lambda role receives `appsync:GraphQL` permission scoped to this API's GraphQL resources. No AppSync API key is created, stored in an environment variable, or exposed to the browser.
+The Lambda role receives `appsync:GraphQL` permission scoped to the single `Query.getSentiments` field ARN. No AppSync API key is created, stored in an environment variable, or exposed to the browser.
 
 ## Verification after deployment
 
