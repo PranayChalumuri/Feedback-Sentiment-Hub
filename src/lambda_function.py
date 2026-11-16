@@ -1,4 +1,5 @@
 import base64
+import binascii
 import json
 import logging
 import os
@@ -19,6 +20,7 @@ logger.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
 
 AWS_REGION = os.getenv("AWS_REGION")
 TABLE_NAME = os.getenv("FEEDBACK_TABLE_NAME", "pranaytable")
+MAX_REQUEST_BODY_BYTES = 16 * 1024
 
 # Keep this list identical to the frontend app selector.
 VALID_APPS = {
@@ -53,7 +55,6 @@ def _response(status_code, body, content_type="application/json"):
         "statusCode": status_code,
         "headers": {
             "Content-Type": content_type,
-            "Access-Control-Allow-Origin": os.getenv("CORS_ALLOW_ORIGIN", "*"),
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "no-store",
         },
@@ -65,7 +66,13 @@ def _response(status_code, body, content_type="application/json"):
 def _request_body(event):
     body = event.get("body") or ""
     if event.get("isBase64Encoded"):
-        body = base64.b64decode(body).decode("utf-8")
+        try:
+            body = base64.b64decode(body, validate=True).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError) as exc:
+            raise ValidationError("Request body must be valid UTF-8 form or JSON data.") from exc
+
+    if len(body.encode("utf-8")) > MAX_REQUEST_BODY_BYTES:
+        raise ValidationError("Request body exceeds the 16 KB limit.")
 
     headers = event.get("headers") or {}
     content_type = next((value for key, value in headers.items() if key.lower() == "content-type"), "")
