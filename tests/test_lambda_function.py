@@ -32,6 +32,19 @@ class RequestParsingTests(unittest.TestCase):
         with self.assertRaises(app.ValidationError):
             app._request_body(event)
 
+    def test_oversized_request_body_is_rejected(self):
+        event = {
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps({"message": "x" * (16 * 1024)}),
+        }
+        with self.assertRaises(app.ValidationError):
+            app._request_body(event)
+
+    def test_invalid_base64_request_body_is_rejected(self):
+        event = {"body": "%%%not-base64%%%", "isBase64Encoded": True}
+        with self.assertRaises(app.ValidationError):
+            app._request_body(event)
+
 
 class ValidationTests(unittest.TestCase):
     def setUp(self):
@@ -70,9 +83,9 @@ class ValidationTests(unittest.TestCase):
 
 
 class HandlerTests(unittest.TestCase):
-    def test_options_preflight(self):
-        result = app.lambda_handler({"httpMethod": "OPTIONS", "path": "/"}, None)
-        self.assertEqual(result["statusCode"], 204)
+    def test_response_does_not_enable_wildcard_cors(self):
+        result = app._response(200, {"ok": True})
+        self.assertNotIn("Access-Control-Allow-Origin", result["headers"])
 
     def test_unknown_method_returns_405(self):
         result = app.lambda_handler({"httpMethod": "DELETE", "path": "/"}, None)
