@@ -1,0 +1,16 @@
+{
+  "version": "2018-05-29",
+  "operation": "Query",
+  "index": "AppNameCreatedAtIndex",
+  "query": {
+    "expression": "#appName = :appName",
+    "expressionNames": {
+      "#appName": "appName"
+    },
+    "expressionValues": {
+      ":appName": $util.dynamodb.toDynamoDBJson($ctx.args.appName)
+    }
+  },
+  "scanIndexForward": false,
+  "limit": 1000
+}
