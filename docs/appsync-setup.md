@@ -43,3 +43,21 @@ query TestSentiments {
 ```
 
 An empty list is a valid response when no feedback has been submitted for that app.
+
+
+## Infrastructure-as-code status
+
+The current `template.yaml` now declares:
+
+- AppSync GraphQL API with API_KEY as its configured authentication mode.
+- GraphQL schema.
+- DynamoDB data source connected to `pranaytable`.
+- Dedicated AppSync IAM role with `dynamodb:Query` limited to the GSI ARN.
+- `Query.getSentiments` resolver using the `AppNameCreatedAtIndex` index.
+- CloudFormation outputs for the GraphQL endpoint and API ID.
+
+CloudFormation does not place a usable API key into the source repository. After deployment, create/inspect the API key in the AppSync console and provide it to the frontend through a deliberate configuration step. Never commit the key.
+
+## Current resolver behavior
+
+The resolver returns up to 1,000 sentiment records for the selected app, newest first. Pagination should be implemented before the application is expected to hold more than 1,000 feedback items for one app. The current dashboard should check GraphQL errors before reading `data.getSentiments`.
