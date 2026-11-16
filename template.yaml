@@ -84,6 +84,94 @@ Resources:
             Path: /
             Method: POST
 
+
+  AppSyncApi:
+    Type: AWS::AppSync::GraphQLApi
+    Properties:
+      Name: feedback-sentiment-graphql
+      AuthenticationType: API_KEY
+      XrayEnabled: true
+
+  AppSyncSchema:
+    Type: AWS::AppSync::GraphQLSchema
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      Definition: |
+        type Sentiment {
+          appName: String!
+          sentiment: String!
+          createdAt: AWSDateTime!
+        }
+
+        type Query {
+          getSentiments(appName: String!): [Sentiment!]!
+        }
+
+        schema {
+          query: Query
+        }
+
+  AppSyncDataSourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: appsync.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: QueryFeedbackByApp
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                Resource: !Sub '${FeedbackTable.Arn}/index/AppNameCreatedAtIndex'
+
+  AppSyncFeedbackDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      Name: FeedbackTableDataSource
+      Type: AMAZON_DYNAMODB
+      ServiceRoleArn: !GetAtt AppSyncDataSourceRole.Arn
+      DynamoDBConfig:
+        AwsRegion: !Ref AWS::Region
+        TableName: !Ref FeedbackTable
+        UseCallerCredentials: false
+
+  GetSentimentsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn:
+      - AppSyncSchema
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      TypeName: Query
+      FieldName: getSentiments
+      DataSourceName: !GetAtt AppSyncFeedbackDataSource.Name
+      RequestMappingTemplate: |
+        {
+          "version": "2018-05-29",
+          "operation": "Query",
+          "index": "AppNameCreatedAtIndex",
+          "query": {
+            "expression": "#appName = :appName",
+            "expressionNames": {
+              "#appName": "appName"
+            },
+            "expressionValues": {
+              ":appName": $util.dynamodb.toDynamoDBJson($ctx.args.appName)
+            }
+          },
+          "scanIndexForward": false,
+          "limit": 1000
+        }
+      ResponseMappingTemplate: |
+        $util.toJson($ctx.result.items)
+
 Outputs:
   FeedbackTableName:
     Description: DynamoDB feedback table name
