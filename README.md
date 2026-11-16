@@ -1,218 +1,111 @@
-# 📊 Health App Feedback & Sentiment Analysis Dashboard
+# Feedback Sentiment Hub
 
-A real-time feedback collection system for health applications with AI-powered sentiment analysis and interactive visualizations.
+A serverless portfolio project that collects feedback about health applications, analyzes its sentiment with Amazon Comprehend, stores submissions in Amazon DynamoDB, and presents sentiment summaries in a public dashboard.
 
-<p align="center">
-  <a href="https://qqainv8x5m.execute-api.ap-south-1.amazonaws.com/dev/">
-    <img src="https://img.shields.io/badge/LIVE-DEMO-brightgreen?style=for-the-badge&logo=aws" alt="Live Demo"/>
-  </a>
-</p>
+> **Showcase/demo only:** This project is intended for technical demonstration and recruiter review. It is not a healthcare service or a production-ready system. The form collects a name, email address, and feedback text. Records are not automatically deleted. Do not submit real personal, medical, or sensitive information.
 
----
+## Project status
 
-## 🎯 **Project Overview**
+- Rebuild branch: `rebuild-v2`
+- AWS region configured for the project: `ap-south-1` (Mumbai)
+- Automated source and infrastructure checks: GitHub Actions
+- AWS deployment: **not performed**
+- Live AWS integration: **not verified**
 
-A fully serverless web application that collects user feedback for health applications, performs real-time sentiment analysis using AWS AI services, and displays interactive visualizations through a dynamic dashboard.
+No live demo link is published for this rebuild. The older deployment URL from the original project is intentionally not presented as the rebuild.
 
----
+## Architecture
 
-## 🖼️ **Screenshots**
-
-### 📝 User Feedback Interface
-*Clean, modern form for collecting user feedback*
-
-![User Interface](./screenshots/User_Interface.png)
-
-### 📱 App Selection Page
-*Select specific health apps for detailed analysis*
-
-![App Selection](./screenshots/App_Selection.png)
-
-### 📊 Real-Time Dashboard
-*Interactive charts showing sentiment distribution*
-
-![Real-Time Dashboard](./screenshots/Real_Time_Dashboard.png)
-
-### ✅ Thank You Response
-*Confirmation page after feedback submission*
-
-![Thank You Response](./screenshots/Thankyou_response.png)
-
----
-
-## 🚀 **Live Demo**
-
-Experience the application in action:
-
-👉 **[Launch Live Application](https://qqainv8x5m.execute-api.ap-south-1.amazonaws.com/dev/)**
-
-| Step | Action |
-|------|--------|
-| 1️⃣ | Submit feedback for any health app |
-| 2️⃣ | Click "Live Feedback Chart" button |
-| 3️⃣ | Select an app from the list |
-| 4️⃣ | Watch real-time sentiment visualizations |
-
----
-
-## ✨ **Key Features**
-
-### 📝 **Feedback Collection**
-- User-friendly form with app selection dropdown
-- Support for **12+ health applications**
-- Email validation and required field checks
-- Real-time submission processing
-
-### 🤖 **AI Sentiment Analysis**
-- **AWS Comprehend** analyzes feedback text
-- Detects: `POSITIVE`, `NEGATIVE`, `MIXED`, `NEUTRAL`
-- Instant processing upon form submission
-- 95%+ accuracy in sentiment detection
-
-### 📈 **Interactive Dashboard**
-
-| Chart Type | Purpose |
-|------------|---------|
-| 📊 **Stacked Bar Chart** | Sentiment distribution by app |
-| 🥧 **Pie Chart** | Overall sentiment ratio |
-| 📋 **Grouped Bar Chart** | Side-by-side sentiment comparison |
-| 🍩 **Donut Chart** | Sentiment percentage visualization |
-
-### 🎨 **Modern UI/UX**
-- Gradient backgrounds and smooth animations
-- Mobile-responsive design
-- Real-time updates every 5 seconds
-- Professional typography with Inter font
-
----
-
-## 🏗️ **Architecture**
-
-```ascii
-┌─────────┐                    ┌─────────┐                    ┌─────────┐
-│ FEEDBACK│───────POST────────▶│   API   │────invoke─────────▶│ LAMBDA  │
-│  FORM   │                    │ GATEWAY │                    │         │
-└─────────┘                    └─────────┘                    └────┬────┘
-                                                                    │
-                                          ┌─────────────────────────┼─────────────────────────┐
-                                          ▼                         ▼                         ▼
-                                   ┌─────────────┐          ┌─────────────┐          ┌─────────────┐
-                                   │ COMPREHEND  │          │  DYNAMODB   │          │   THANK YOU │
-                                   │ Sentiment   │◄────────│   STORAGE   │─────────▶│    PAGE     │
-                                   │  Analysis   │          │             │          │ lasting.html│
-                                   └─────────────┘          └──────┬──────┘          └─────────────┘
-                                                                    │
-                                                                    ▼
-                                                              ┌─────────────┐
-                                                              │  APPSYNC    │
-                                                              │  GraphQL    │
-                                                              └──────┬──────┘
-                                                                    │
-                                                                    ▼
-                                                              ┌─────────────┐
-                                                              │  DASHBOARD  │
-                                                              │   CHARTS    │
-                                                              │ success.html│
-                                                              └─────────────┘
+```text
+Browser
+  |
+  +-- Feedback form / public dashboard
+  |
+API Gateway (REST)
+  |
+AWS Lambda (Python)
+  |                  |
+  |                  +--> Amazon Comprehend (sentiment detection)
+  |
+  +--> Amazon DynamoDB (feedback records)
+  |
+  +--> AWS AppSync (IAM-authenticated GraphQL)
+          |
+          +--> DynamoDB AppNameCreatedAtIndex
 ```
 
-📁 Project Structure
-📦 health-app-feedback
-├── 📄 lambda_function.py      # Main Lambda function (Python)
-├── 📄 contactus.html          # Feedback submission form
-├── 📄 app_selection.html      # App selector page
-├── 📄 success.html            # Dashboard with charts
-├── 📄 lasting.html            # Thank you page
-├── 📁 screenshots/            # Project images
-└── 📄 README.md               # Project documentation
+The browser calls same-origin API Gateway routes. Lambda signs its AppSync GraphQL requests with AWS Signature Version 4 using its execution role. The browser receives no AWS credentials or AppSync API key.
 
+## Features
+
+### Feedback submission
+- Name and email fields retained from the original project.
+- Select from 12 supported health applications.
+- Input validation and a 16 KB request-body limit.
+- Amazon Comprehend sentiment labels: `POSITIVE`, `NEGATIVE`, `MIXED`, and `NEUTRAL`.
+
+### Public sentiment dashboard
+- Public app-selection and dashboard pages.
+- Five KPI values: total, positive, negative, mixed, and neutral feedback.
+- Four Google Charts visualizations.
+- Refreshes every 30 seconds.
+- Handles AppSync/DynamoDB pagination and guards against repeated cursors and excessive page counts.
+- Dashboard data is restricted to app name, sentiment, and timestamp. Submitter name, email, and feedback text are not part of the GraphQL response.
+
+### Data storage
+- DynamoDB table: `pranaytable` (configurable in the SAM template).
+- Partition key: `feedbackId`.
+- GSI: `AppNameCreatedAtIndex`, partitioned by app name and sorted by creation time.
+- On-demand billing mode.
+- No TTL or automatic record expiry. Demo records remain until manually deleted or the table is removed.
+
+## Repository structure
+
+```text
+graphql/                  GraphQL schema and AppSync resolver templates
+src/lambda_function.py    Python Lambda handler
+src/static/               Feedback, app-selection, dashboard, and thank-you pages
+tests/                    Lambda unit tests with mocked AWS services
+scripts/                  Frontend validation
+docs/                     Architecture, data design, setup, and review notes
+template.yaml             AWS SAM / CloudFormation infrastructure
+.github/workflows/        Automated project checks
 ```
-🛠️ Technology Stack
-Frontend
-Technology	Purpose
-HTML5/CSS3	Structure and styling
-JavaScript	Client-side logic
-Tailwind CSS	UI framework
-Google Charts	Data visualization
-Inter Font	Typography
 
+## Run checks locally
 
-🔄 Data Flow
-User Submits Feedback
+The GitHub Actions workflow runs Python compilation, unit tests, JavaScript syntax validation, and CloudFormation linting.
 
-User fills form → API Gateway POST → Lambda
-Lambda calls Comprehend for sentiment analysis
-Data stored in DynamoDB
-User redirected to thank you page
-Dashboard Displays Data
+Typical local commands (after installing the listed tools/dependencies):
 
-User selects app → Dashboard loads
-Dashboard calls AppSync directly every 5 seconds
-AppSync queries DynamoDB for latest data
-Google Charts render visualizations
-KPI cards update in real-time
+```bash
+python -m py_compile src/lambda_function.py
+python -m unittest discover -s tests -v
+python scripts/validate_frontend.py
+cfn-lint template.yaml
+```
 
-🌐 API Endpoints
-Endpoint                  |	Method |	Purpose |	Response            |
-/dev/	                    |GET	   |Serve     |feedback form	HTML
-/dev/?page=app_selection	|GET	   |Serve     |app selector	HTML
-/dev/dashboard?app={name}	|GET	   |Serve     |dashboard	HTML
-/dev/	                    |POST	   |Submit    |feedback	Redirect
+These checks do not deploy resources or prove live AWS integration.
 
-📈 Performance Metrics
-Metric	       |          Value
-API Response Time	  --->    ~100-200ms
-Dashboard           --->  Updates	Every 5 seconds
-Concurrent Users	  --->  Scales automatically
-Data Storage	      --->  Unlimited (DynamoDB)
-Cold Start	        ---> ~500ms (first request)
+## Security and privacy notes
 
-🔒 Security Features
-✅ API Gateway as secure entry point
+- Lambda uses IAM roles for DynamoDB writes and AppSync field access.
+- The AppSync data-source role is restricted to querying the dashboard GSI.
+- Name, email, and free-text feedback are stored in DynamoDB.
+- No automatic retention or deletion is configured.
+- The dashboard is intentionally public and exposes app name, sentiment, and timestamp only.
+- The submission endpoint is public. API Gateway throttling is a baseline safeguard, not comprehensive abuse protection or a cost ceiling.
+- The form warns visitors not to submit real personal, medical, or sensitive information.
 
-✅ AppSync API Key authentication
+See [docs/pre-deployment-review.md](docs/pre-deployment-review.md) for known limitations and checks required before any deployment.
 
-✅ Lambda IAM roles with least privilege
+## Technologies
 
-✅ CORS enabled for browser access
-
-✅ Input validation on form submissions
-
----------------------------------
-
-🚀 Future Enhancements
-Cognito authentication for secure dashboard access
-
-Email notifications for critical feedback
-
-Export data to CSV/Excel
-
-Date range filtering on dashboard
-
-Word cloud visualization of common terms
-
-Multi-language support
-
-Mobile app integration
-
-PDF report generation
-----------------------------------
-
-👏 Acknowledgments
-AWS for serverless services
-
-Google Charts for visualization library
-
-Tailwind CSS for styling framework
-
-All contributors who helped test and improve
-
-
-📞 Contact
-Phone: +91 7093274782
-
-Email: chalumuripranaykumar@gmail.com
-
-GitHub Issues: Open an issue in this repository
-
-
+- AWS Lambda (Python 3.12)
+- Amazon API Gateway
+- Amazon DynamoDB
+- AWS AppSync (GraphQL, IAM authorization)
+- Amazon Comprehend
+- AWS SAM / CloudFormation
+- GitHub Actions
+- HTML, CSS, JavaScript, Tailwind CSS, Google Charts

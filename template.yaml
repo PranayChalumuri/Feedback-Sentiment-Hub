@@ -1,0 +1,233 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Feedback Sentiment Hub - rebuild v2 foundation
+
+Parameters:
+  FeedbackTableName:
+    Type: String
+    Default: pranaytable
+    Description: DynamoDB table for submitted feedback
+
+Resources:
+  FeedbackTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref FeedbackTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: feedbackId
+          AttributeType: S
+        - AttributeName: appName
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: feedbackId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: AppNameCreatedAtIndex
+          KeySchema:
+            - AttributeName: appName
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - sentiment
+
+  FeedbackApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: feedback-sentiment-api
+      StageName: dev
+      EndpointConfiguration:
+        Type: REGIONAL
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingRateLimit: 5
+          ThrottlingBurstLimit: 10
+
+  FeedbackFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: feedback-sentiment-handler
+      Runtime: python3.12
+      Architectures:
+        - arm64
+      CodeUri: src/
+      Handler: lambda_function.lambda_handler
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          FEEDBACK_TABLE_NAME: !Ref FeedbackTable
+          LOG_LEVEL: INFO
+          APPSYNC_GRAPHQL_URL: !GetAtt AppSyncApi.GraphQLUrl
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            - Sid: DetectFeedbackSentiment
+              Effect: Allow
+              Action:
+                - comprehend:DetectSentiment
+              Resource: '*'
+            - Sid: WriteFeedbackRecords
+              Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !GetAtt FeedbackTable.Arn
+            - Sid: ReadDashboardGraphQL
+              Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource: !Sub '${AppSyncApi.Arn}/types/Query/fields/getSentiments'
+      Events:
+        SubmitFeedback:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FeedbackApi
+            Path: /
+            Method: POST
+        HomePage:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FeedbackApi
+            Path: /
+            Method: GET
+        AppSelectionPage:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FeedbackApi
+            Path: /app-selection
+            Method: GET
+        DashboardPage:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FeedbackApi
+            Path: /dashboard
+            Method: GET
+        SentimentsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FeedbackApi
+            Path: /api/sentiments
+            Method: GET
+
+  AppSyncApi:
+    Type: AWS::AppSync::GraphQLApi
+    Properties:
+      Name: FeedbackSentimentGraphQL
+      AuthenticationType: AWS_IAM
+      XrayEnabled: true
+
+  AppSyncSchema:
+    Type: AWS::AppSync::GraphQLSchema
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      Definition: |
+        type Sentiment {
+          appName: String!
+          sentiment: String!
+          createdAt: AWSDateTime!
+        }
+
+        type SentimentConnection {
+          items: [Sentiment!]!
+          nextToken: String
+        }
+
+        type Query {
+          getSentiments(appName: String!, nextToken: String): SentimentConnection!
+        }
+
+        schema {
+          query: Query
+        }
+
+  AppSyncDataSourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: appsync.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !GetAtt AppSyncApi.Arn
+      Policies:
+        - PolicyName: QueryFeedbackByApp
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                Resource: !Sub '${FeedbackTable.Arn}/index/AppNameCreatedAtIndex'
+
+  AppSyncFeedbackDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      Name: FeedbackTableDataSource
+      Type: AMAZON_DYNAMODB
+      ServiceRoleArn: !GetAtt AppSyncDataSourceRole.Arn
+      DynamoDBConfig:
+        AwsRegion: !Ref AWS::Region
+        TableName: !Ref FeedbackTable
+        UseCallerCredentials: false
+
+  GetSentimentsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn:
+      - AppSyncSchema
+    Properties:
+      ApiId: !GetAtt AppSyncApi.ApiId
+      TypeName: Query
+      FieldName: getSentiments
+      DataSourceName: !GetAtt AppSyncFeedbackDataSource.Name
+      RequestMappingTemplate: |
+        {
+          "version": "2018-05-29",
+          "operation": "Query",
+          "index": "AppNameCreatedAtIndex",
+          "query": {
+            "expression": "#appName = :appName",
+            "expressionNames": {
+              "#appName": "appName"
+            },
+            "expressionValues": {
+              ":appName": $util.dynamodb.toDynamoDBJson($ctx.args.appName)
+            }
+          },
+          "scanIndexForward": false,
+          "limit": 100
+          #if($ctx.args.nextToken)
+            ,"nextToken": $util.toJson($ctx.args.nextToken)
+          #end
+        }
+      ResponseMappingTemplate: |
+        $util.toJson($ctx.result)
+
+Outputs:
+  FeedbackTableName:
+    Description: DynamoDB feedback table name
+    Value: !Ref FeedbackTable
+  FeedbackTableArn:
+    Description: DynamoDB feedback table ARN
+    Value: !GetAtt FeedbackTable.Arn
+  FeedbackApiUrl:
+    Description: API Gateway REST endpoint for feedback submission
+    Value: !Sub 'https://${FeedbackApi}.execute-api.${AWS::Region}.amazonaws.com/dev/'
+  AppSyncGraphQLEndpoint:
+    Description: AppSync GraphQL endpoint
+    Value: !GetAtt AppSyncApi.GraphQLUrl
+  AppSyncApiId:
+    Description: AppSync API identifier
+    Value: !GetAtt AppSyncApi.ApiId

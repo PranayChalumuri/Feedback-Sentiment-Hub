@@ -1,0 +1,18 @@
+type Sentiment {
+  appName: String!
+  sentiment: String!
+  createdAt: AWSDateTime!
+}
+
+type SentimentConnection {
+  items: [Sentiment!]!
+  nextToken: String
+}
+
+type Query {
+  getSentiments(appName: String!, nextToken: String): SentimentConnection!
+}
+
+schema {
+  query: Query
+}
