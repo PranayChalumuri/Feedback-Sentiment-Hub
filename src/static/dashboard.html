@@ -22,7 +22,7 @@
                 </h1>
             </div>
             <div class="text-sm text-gray-500">
-                <span id="last-updated">Updating every 5 seconds...</span>
+                <span id="last-updated">Updating every 30 seconds...</span>
             </div>
         </div>
     </div>
@@ -79,6 +79,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         const appName = urlParams.get('app');
         let isRefreshing = false;
+        const MAX_DASHBOARD_PAGES = 100;
 
         if (appName) {
             document.getElementById('app-name-display').textContent = appName;
@@ -88,7 +89,7 @@
         google.charts.setOnLoadCallback(function() {
             if (appName) {
                 fetchSentiments();
-                setInterval(fetchSentiments, 5000);
+                setInterval(fetchSentiments, 30000);
             }
         });
 
@@ -97,9 +98,16 @@
             isRefreshing = true;
             try {
                 let nextToken = null;
+                let pageCount = 0;
+                const seenTokens = new Set();
                 const allRows = [];
 
                 do {
+                    pageCount += 1;
+                    if (pageCount > MAX_DASHBOARD_PAGES) {
+                        throw new Error("Dashboard result is too large. A date filter is needed.");
+                    }
+
                     let endpoint = `/api/sentiments?app=${encodeURIComponent(appName)}`;
                     if (nextToken) {
                         endpoint += `&nextToken=${encodeURIComponent(nextToken)}`;
@@ -113,6 +121,12 @@
 
                     allRows.push(...(result.sentiments || []));
                     nextToken = result.nextToken || null;
+                    if (nextToken) {
+                        if (seenTokens.has(nextToken)) {
+                            throw new Error("Dashboard pagination returned a repeated cursor.");
+                        }
+                        seenTokens.add(nextToken);
+                    }
                 } while (nextToken);
 
                 const counts = {
