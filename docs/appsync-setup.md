@@ -55,4 +55,4 @@ Pass the returned `nextToken` as the next request's `nextToken` variable. An emp
 
 ## Operational note
 
-The dashboard retrieves every page sequentially to calculate totals across all feedback. A refresh is skipped while the previous refresh is still running. For very large datasets, consider server-side aggregate counters or time-window filtering rather than repeatedly downloading the full history every five seconds.
+The dashboard retrieves every page sequentially to calculate totals across all feedback. A refresh is skipped while the previous refresh is still running. For very large datasets, consider server-side aggregate counters or time-window filtering rather than repeatedly downloading the full history every 30 seconds.
