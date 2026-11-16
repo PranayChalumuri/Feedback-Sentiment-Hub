@@ -1,0 +1,13 @@
+type Sentiment {
+  appName: String!
+  sentiment: String!
+  createdAt: AWSDateTime!
+}
+
+type Query {
+  getSentiments(appName: String!): [Sentiment!]!
+}
+
+schema {
+  query: Query
+}
