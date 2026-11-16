@@ -52,12 +52,11 @@ The browser retrieves every page sequentially and repeats that work every five s
 - Add a maximum page/record budget and a clear “data is too large; narrow the date range” response if full-history loading is retained.
 - Test pagination with enough records to force multiple pages, including a DynamoDB 1 MB page boundary, after deployment is explicitly approved.
 
-### 5. CORS and browser security headers – medium priority
+### 5. CORS and browser security headers – partially resolved
 
-The Lambda response currently sends `Access-Control-Allow-Origin: *`, and API Gateway CORS is also configured broadly. The current pages use same-origin requests, so broad CORS is not needed for the normal browser flow. CORS is not authentication and does not stop direct HTTP clients.
+The frontend uses same-origin requests. Wildcard CORS response headers and the broad API Gateway CORS configuration have been removed from the source, so cross-origin browser clients are not intentionally supported. CORS is not authentication and does not stop direct HTTP clients.
 
-**Recommended improvements:**
-- Remove CORS headers/configuration if no cross-origin client is required, or set a specific trusted origin if one is introduced.
+**Remaining improvement:**
 - Consider a Content-Security-Policy and a Referrer-Policy after reviewing the external Google Charts, Tailwind, and Google Fonts dependencies.
 - Keep `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`.
 
