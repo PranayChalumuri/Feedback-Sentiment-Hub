@@ -30,7 +30,7 @@
 
     <!-- KPI Cards (same as before) -->
     <div class="max-w-7xl mx-auto mb-6">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div class="bg-white rounded-xl shadow p-6">
                 <p class="text-sm text-gray-500 mb-1">Total Feedback</p>
                 <p class="text-3xl font-bold text-gray-800" id="total-feedback">0</p>
@@ -46,6 +46,10 @@
             <div class="bg-white rounded-xl shadow p-6">
                 <p class="text-sm text-gray-500 mb-1">Mixed</p>
                 <p class="text-3xl font-bold text-yellow-600" id="mixed-count">0</p>
+            </div>
+            <div class="bg-white rounded-xl shadow p-6">
+                <p class="text-sm text-gray-500 mb-1">Neutral</p>
+                <p class="text-3xl font-bold text-gray-600" id="neutral-count">0</p>
             </div>
         </div>
     </div>
@@ -94,7 +98,6 @@
         });
 
         async function fetchSentiments() {
-            async function fetchSentiments() {
             try {
                 const response = await fetch(`/api/sentiments?app=${encodeURIComponent(appName)}`);
                 const result = await response.json();
@@ -110,6 +113,7 @@
                 document.getElementById("positive-count").textContent = counts.POSITIVE;
                 document.getElementById("negative-count").textContent = counts.NEGATIVE;
                 document.getElementById("mixed-count").textContent = counts.MIXED;
+                document.getElementById("neutral-count").textContent = counts.NEUTRAL;
                 drawCharts(counts);
                 document.getElementById("last-updated").textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
             } catch (error) {
