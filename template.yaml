@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Feedback Sentiment Hub - rebuild v2 foundation
+
+Parameters:
+  FeedbackTableName:
+    Type: String
+    Default: pranaytable
+    Description: DynamoDB table for submitted feedback
+
+Resources:
+  FeedbackTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref FeedbackTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: feedbackId
+          AttributeType: S
+        - AttributeName: appName
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: feedbackId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: AppNameCreatedAtIndex
+          KeySchema:
+            - AttributeName: appName
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - sentiment
+
+  FeedbackApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: feedback-sentiment-api
+      StageName: dev
+      EndpointConfiguration:
+        Type: REGIONAL
+      Cors:
+        AllowMethods: "'POST,OPTIONS'"
+        AllowHeaders: "'Content-Type'"
+        AllowOrigin: "'*'"
+
+  FeedbackFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: feedback-sentiment-handler
+      Runtime: python3.12
+      Architectures:
+        - arm64
+      CodeUri: src/
+      Handler: lambda_function.lambda_handler
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          FEEDBACK_TABLE_NAME: !Ref FeedbackTable
+          LOG_LEVEL: INFO
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            - Sid: DetectFeedbackSentiment
+              Effect: Allow
+              Action:
+                - comprehend:DetectSentiment
+              Resource: '*'
+            - Sid: WriteFeedbackRecords
+              Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !GetAtt FeedbackTable.Arn
+      Events:
+        SubmitFeedback:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FeedbackApi
+            Path: /
+            Method: POST
+
+Outputs:
+  FeedbackTableName:
+    Description: DynamoDB feedback table name
+    Value: !Ref FeedbackTable
+  FeedbackTableArn:
+    Description: DynamoDB feedback table ARN
+    Value: !GetAtt FeedbackTable.Arn
+  FeedbackApiUrl:
+    Description: API Gateway REST endpoint for feedback submission
+    Value: !Sub 'https://${FeedbackApi}.execute-api.${AWS::Region}.amazonaws.com/dev/'
