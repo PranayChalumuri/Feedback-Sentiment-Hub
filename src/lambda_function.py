@@ -114,18 +114,20 @@ def _html_page(filename):
         return _response(500, {"message": "Page is temporarily unavailable."})
 
 
-def _get_sentiments(app_name):
+def _get_sentiments(app_name, next_token=None):
     endpoint = os.getenv("APPSYNC_GRAPHQL_URL", "")
     if not endpoint or not AWS_REGION:
         return _response(503, {"message": "Dashboard API is not configured."})
 
     query = (
-        "query GetSentiments($appName: String!) { "
-        "getSentiments(appName: $appName) { appName sentiment createdAt } }"
+        "query GetSentiments($appName: String!, $nextToken: String) { "
+        "getSentiments(appName: $appName, nextToken: $nextToken) { "
+        "items { appName sentiment createdAt } nextToken } }"
     )
-    body = json.dumps(
-        {"query": query, "variables": {"appName": app_name}}
-    ).encode("utf-8")
+    variables = {"appName": app_name}
+    if next_token:
+        variables["nextToken"] = next_token
+    body = json.dumps({"query": query, "variables": variables}).encode("utf-8")
 
     try:
         credentials = session.get_credentials()
@@ -154,8 +156,14 @@ def _get_sentiments(app_name):
             logger.error("AppSync GraphQL errors: %s", payload["errors"])
             return _response(502, {"message": "Dashboard data could not be retrieved."})
 
-        sentiments = payload.get("data", {}).get("getSentiments", [])
-        return _response(200, {"sentiments": sentiments or []})
+        connection = payload.get("data", {}).get("getSentiments") or {}
+        return _response(
+            200,
+            {
+                "sentiments": connection.get("items") or [],
+                "nextToken": connection.get("nextToken"),
+            },
+        )
     except Exception:
         logger.exception("AppSync request failed")
         return _response(502, {"message": "Dashboard data could not be retrieved."})
@@ -175,7 +183,7 @@ def lambda_handler(event, context):
             app_name = (params.get("app") or "").strip()
             if app_name not in VALID_APPS:
                 return _response(400, {"message": "Please select a supported health app."})
-            return _get_sentiments(app_name)
+            return _get_sentiments(app_name, params.get("nextToken"))
         if path.endswith("/dashboard"):
             app_name = (params.get("app") or "").strip()
             if app_name not in VALID_APPS:
