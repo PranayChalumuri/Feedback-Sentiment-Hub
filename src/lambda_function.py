@@ -7,10 +7,11 @@ import uuid
 import urllib.request
 from pathlib import Path
 from datetime import datetime, timezone
-from html import escape
 from urllib.parse import parse_qs
 
 import boto3
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
 from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger()
@@ -37,8 +38,9 @@ VALID_APPS = {
 
 ALLOWED_SENTIMENTS = {"POSITIVE", "NEGATIVE", "MIXED", "NEUTRAL"}
 
-dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
-comprehend = boto3.client("comprehend", region_name=AWS_REGION)
+session = boto3.Session()
+dynamodb = session.resource("dynamodb", region_name=AWS_REGION)
+comprehend = session.client("comprehend", region_name=AWS_REGION)
 table = dynamodb.Table(TABLE_NAME)
 
 
@@ -78,7 +80,6 @@ def _request_body(event):
             raise ValidationError("Request body must be a JSON object.")
         return payload
 
-    # HTML form submissions use application/x-www-form-urlencoded.
     parsed = parse_qs(body, keep_blank_values=True)
     return {key: values[-1] for key, values in parsed.items()}
 
@@ -101,26 +102,7 @@ def _validate(payload):
     if not message or len(message) > 5000:
         raise ValidationError("Feedback must contain 1–5000 characters.")
 
-    return {
-        "fname": name,
-        "email": email,
-        "appName": app_name,
-        "message": message,
-    }
-
-
-def _thank_you_page():
-    # A small inline confirmation keeps the submission flow functional while
-    # the original HTML pages are integrated into the new deployment package.
-    return """<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Thank you</title></head>
-<body style="font-family:Arial,sans-serif;max-width:640px;margin:12vh auto;padding:24px;text-align:center">
-<h1>Thank you for your feedback!</h1>
-<p>Your feedback has been received successfully.</p>
-<a href="/">Return to the feedback form</a>
-</body></html>"""
+    return {"fname": name, "email": email, "appName": app_name, "message": message}
 
 
 def _html_page(filename):
@@ -134,26 +116,46 @@ def _html_page(filename):
 
 def _get_sentiments(app_name):
     endpoint = os.getenv("APPSYNC_GRAPHQL_URL", "")
-    api_key = os.getenv("APPSYNC_API_KEY", "")
-    if not endpoint or not api_key:
+    if not endpoint or not AWS_REGION:
         return _response(503, {"message": "Dashboard API is not configured."})
 
-    query = "query GetSentiments($appName: String!) { getSentiments(appName: $appName) { appName sentiment createdAt } }"
-    body = json.dumps({"query": query, "variables": {"appName": app_name}}).encode("utf-8")
-    request = urllib.request.Request(
-        endpoint,
-        data=body,
-        headers={"Content-Type": "application/json", "x-api-key": api_key},
-        method="POST",
+    query = (
+        "query GetSentiments($appName: String!) { "
+        "getSentiments(appName: $appName) { appName sentiment createdAt } }"
     )
+    body = json.dumps(
+        {"query": query, "variables": {"appName": app_name}}
+    ).encode("utf-8")
+
     try:
-        with urllib.request.urlopen(request, timeout=8) as response:
+        credentials = session.get_credentials()
+        if credentials is None:
+            raise RuntimeError("Lambda execution credentials are unavailable.")
+
+        request = AWSRequest(
+            method="POST",
+            url=endpoint,
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        SigV4Auth(credentials.get_frozen_credentials(), "appsync", AWS_REGION).add_auth(request)
+        prepared = request.prepare()
+        signed_request = urllib.request.Request(
+            prepared.url,
+            data=prepared.body,
+            headers=dict(prepared.headers.items()),
+            method=prepared.method,
+        )
+
+        with urllib.request.urlopen(signed_request, timeout=8) as response:
             payload = json.loads(response.read().decode("utf-8"))
+
         if payload.get("errors"):
             logger.error("AppSync GraphQL errors: %s", payload["errors"])
             return _response(502, {"message": "Dashboard data could not be retrieved."})
+
         sentiments = payload.get("data", {}).get("getSentiments", [])
-        return _response(200, {"sentiments": sentiments})
+        return _response(200, {"sentiments": sentiments or []})
     except Exception:
         logger.exception("AppSync request failed")
         return _response(502, {"message": "Dashboard data could not be retrieved."})
@@ -188,11 +190,7 @@ def lambda_handler(event, context):
 
     try:
         payload = _validate(_request_body(event))
-
-        sentiment_result = comprehend.detect_sentiment(
-            Text=payload["message"],
-            LanguageCode="en",
-        )
+        sentiment_result = comprehend.detect_sentiment(Text=payload["message"], LanguageCode="en")
         sentiment = sentiment_result.get("Sentiment")
         if sentiment not in ALLOWED_SENTIMENTS:
             raise RuntimeError("Comprehend returned an unexpected sentiment label.")
@@ -207,17 +205,11 @@ def lambda_handler(event, context):
             "sentiment": sentiment,
             "createdAt": created_at,
         }
-
-        table.put_item(
-            Item=item,
-            ConditionExpression="attribute_not_exists(feedbackId)",
-        )
+        table.put_item(Item=item, ConditionExpression="attribute_not_exists(feedbackId)")
 
         logger.info(
             "Feedback stored successfully: appName=%s sentiment=%s feedbackId=%s",
-            item["appName"],
-            item["sentiment"],
-            item["feedbackId"],
+            item["appName"], item["sentiment"], item["feedbackId"],
         )
         return _html_page("thank-you.html")
 
