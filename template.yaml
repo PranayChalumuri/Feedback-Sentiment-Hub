@@ -3,11 +3,6 @@ Transform: AWS::Serverless-2016-10-31
 Description: Feedback Sentiment Hub - rebuild v2 foundation
 
 Parameters:
-  AppSyncApiKey:
-    Type: String
-    NoEcho: true
-    Default: ''
-    Description: AppSync API key, supplied securely after API key creation
   FeedbackTableName:
     Type: String
     Default: pranaytable
@@ -49,7 +44,7 @@ Resources:
       EndpointConfiguration:
         Type: REGIONAL
       Cors:
-        AllowMethods: "'POST,OPTIONS'"
+        AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type'"
         AllowOrigin: "'*'"
 
@@ -69,7 +64,6 @@ Resources:
           FEEDBACK_TABLE_NAME: !Ref FeedbackTable
           LOG_LEVEL: INFO
           APPSYNC_GRAPHQL_URL: !GetAtt AppSyncApi.GraphQLUrl
-          APPSYNC_API_KEY: !Ref AppSyncApiKey
       Policies:
         - AWSLambdaBasicExecutionRole
         - Statement:
@@ -83,6 +77,11 @@ Resources:
               Action:
                 - dynamodb:PutItem
               Resource: !GetAtt FeedbackTable.Arn
+            - Sid: ReadDashboardGraphQL
+              Effect: Allow
+              Action:
+                - appsync:GraphQL
+              Resource: !Sub '${AppSyncApi.Arn}/*'
       Events:
         SubmitFeedback:
           Type: Api
@@ -115,12 +114,11 @@ Resources:
             Path: /api/sentiments
             Method: GET
 
-
   AppSyncApi:
     Type: AWS::AppSync::GraphQLApi
     Properties:
       Name: feedback-sentiment-graphql
-      AuthenticationType: API_KEY
+      AuthenticationType: AWS_IAM
       XrayEnabled: true
 
   AppSyncSchema:
