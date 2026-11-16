@@ -48,10 +48,6 @@ Resources:
           HttpMethod: "*"
           ThrottlingRateLimit: 5
           ThrottlingBurstLimit: 10
-      Cors:
-        AllowMethods: "'GET,POST,OPTIONS'"
-        AllowHeaders: "'Content-Type'"
-        AllowOrigin: "'*'"
 
   FeedbackFunction:
     Type: AWS::Serverless::Function
