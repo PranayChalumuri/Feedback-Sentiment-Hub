@@ -12,21 +12,25 @@ The template creates a DynamoDB data source pointing to the configured feedback 
 
 The Lambda execution role and AppSync data source role remain separate.
 
-## Resolver
+## Resolver and pagination
 
 The template creates a UNIT resolver on `Query.getSentiments` using the DynamoDB data source.
 
 - Request mapping template: `graphql/resolvers/getSentiments.request.vtl`
 - Response mapping template: `graphql/resolvers/getSentiments.response.vtl`
+- The resolver queries the GSI by `appName`, newest records first.
+- Each resolver request asks DynamoDB for up to 100 records. DynamoDB may return fewer when the 1 MB response limit is reached.
+- The response includes `items` and an opaque `nextToken`. The token is passed back on the next GraphQL request until it is null.
 
-The resolver queries the GSI by `appName`, returns newest records first, and currently returns at most 1,000 records. The index projection includes `appName`, `createdAt`, and `sentiment`, matching the GraphQL type.
+The index projection includes `appName`, `createdAt`, and `sentiment`, matching the GraphQL `Sentiment` type.
 
 ## Authentication and request flow
 
 - Browser → API Gateway: the dashboard calls the same-origin `/api/sentiments?app=...` endpoint.
-- API Gateway → Lambda: Lambda validates the selected app.
-- Lambda → AppSync: Lambda signs the GraphQL request with its execution-role credentials using AWS Signature Version 4.
+- API Gateway → Lambda: Lambda validates the selected app and optional pagination token.
+- Lambda → AppSync: Lambda signs each GraphQL page request with its execution-role credentials using AWS Signature Version 4.
 - AppSync → DynamoDB: AppSync uses its separate data-source role to query the GSI.
+- Lambda returns one page and its opaque cursor to the browser. The dashboard requests subsequent pages sequentially and aggregates the rows for its charts.
 
 The Lambda role receives `appsync:GraphQL` permission scoped to the single `Query.getSentiments` field ARN. No AppSync API key is created, stored in an environment variable, or exposed to the browser.
 
@@ -35,17 +39,20 @@ The Lambda role receives `appsync:GraphQL` permission scoped to the single `Quer
 Use the AppSync Queries page or the signed Lambda proxy to run:
 
 ```graphql
-query TestSentiments {
-  getSentiments(appName: "Samsung Health") {
-    appName
-    sentiment
-    createdAt
+query TestSentiments($appName: String!, $nextToken: String) {
+  getSentiments(appName: $appName, nextToken: $nextToken) {
+    items {
+      appName
+      sentiment
+      createdAt
+    }
+    nextToken
   }
 }
 ```
 
-An empty list is a valid response when no feedback has been submitted for that app. Direct console query testing must use an IAM-authorized identity.
+Pass the returned `nextToken` as the next request's `nextToken` variable. An empty `items` list with a null token is a valid response when no matching feedback exists. Direct console query testing must use an IAM-authorized identity.
 
-## Current limitations
+## Operational note
 
-The resolver returns up to 1,000 sentiment records for the selected app. Pagination should be implemented before the application is expected to hold more than 1,000 feedback items for one app. The dashboard should handle an empty result and API errors without implying that no feedback exists when the API request itself failed.
+The dashboard retrieves every page sequentially to calculate totals across all feedback. A refresh is skipped while the previous refresh is still running. For very large datasets, consider server-side aggregate counters or time-window filtering rather than repeatedly downloading the full history every five seconds.
