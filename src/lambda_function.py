@@ -63,7 +63,8 @@ def _request_body(event):
     if event.get("isBase64Encoded"):
         body = base64.b64decode(body).decode("utf-8")
 
-    content_type = (event.get("headers") or {}).get("content-type", "")
+    headers = event.get("headers") or {}
+    content_type = next((value for key, value in headers.items() if key.lower() == "content-type"), "")
     content_type = content_type.lower()
 
     if "application/json" in content_type:
